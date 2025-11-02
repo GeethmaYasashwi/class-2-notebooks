@@ -10,6 +10,7 @@ Instructions: Fill the TODOs only. Do not change class/method signatures.
 """
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -17,6 +18,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
+from dotenv import load_dotenv
+
+
+# Load environment variables from .env
+load_dotenv()
 
 @dataclass
 class DispatchResult:
@@ -29,18 +35,14 @@ class EmergencyDispatcher:
     """Minimal LLM-backed dispatcher triage assistant."""
 
     def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.2):
-        # TODO: Initialize an LLM for stable, reproducible outputs
-        # self.llm = ChatOpenAI(model=model, temperature=temperature)
-        self.llm = None
-
-        # TODO: Build the ChatPromptTemplate from prompt strings in `_build_prompt`
-        # self.prompt = self._build_prompt()
-        self.prompt = None
-
-        # TODO: Create a chain that maps {transcript} -> "URGENCY | SUMMARY | ACTION"
-        # self.chain = self.prompt | self.llm | StrOutputParser()
-        self.chain = None
-
+        
+        self.llm = ChatOpenAI(model=model, temperature=temperature)
+        self.prompt = self._build_prompt()
+        self.chain = self.prompt | self.llm | StrOutputParser()
+        
+        
+        
+        
     def _build_prompt(self) -> Optional[ChatPromptTemplate]:
         """
         TODO: Create a `ChatPromptTemplate` using `from_messages`.
@@ -54,20 +56,17 @@ class EmergencyDispatcher:
         """
         # Provide the prompts as strings (fill in the template wiring below):
         system_prompt = (
-            "You are a calm, concise emergency triage assistant."
-            " Output a single line: URGENCY | SUMMARY | ACTION."
-            " URGENCY must be one of EMERGENCY, NON_EMERGENCY, UNKNOWN."
-            " SUMMARY must be <= 20 words. ACTION should start with a verb."
-        )
+                    "You are a calm, concise emergency triage assistant."
+                    " Output a single line: URGENCY | SUMMARY | ACTION."
+                    " URGENCY must be one of EMERGENCY, NON_EMERGENCY, UNKNOWN."
+                    " SUMMARY must be <= 20 words. ACTION should start with a verb."
+            )
         user_prompt = "Transcript: {transcript}\nReturn only the line, no extra text."
 
-        # TODO: create ChatPromptTemplate with above prompts
-        # Example construction (fill in):
-        # return ChatPromptTemplate.from_messages([
-        #     ("system", system_prompt),
-        #     ("user", user_prompt),
-        # ])
-        return None
+        return ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", user_prompt),
+        ])
 
     def triage_call(self, transcript: str) -> DispatchResult:
         """
@@ -80,7 +79,17 @@ class EmergencyDispatcher:
         """
         # TODO: invoke the chain with {"transcript": transcript}
         # and parse the result into DispatchResult
-        raise NotImplementedError("Build chain, invoke, and parse triage output.")
+        output = self.chain.invoke({"transcript": transcript})
+        parts = [p.strip() for p in output.split("|")]
+        if len(parts) != 3:
+            # Defensive fallback in case output is malformed
+            return DispatchResult(
+                urgency="UNKNOWN",
+                summary="Could not parse response",
+                action="Request additional information"
+            )
+        urgency, summary, action = parts
+        return DispatchResult(urgency=urgency, summary=summary, action=action)
 
 
 def _demo_cases() -> None:
@@ -106,4 +115,5 @@ def _demo_cases() -> None:
 if __name__ == "__main__":
     if not os.getenv("OPENAI_API_KEY"):
         print("⚠️ Set OPENAI_API_KEY before running.")
-    _demo_cases()
+    else:
+        _demo_cases()

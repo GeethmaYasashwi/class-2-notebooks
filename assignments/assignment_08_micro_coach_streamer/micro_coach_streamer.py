@@ -32,17 +32,17 @@ class MicroCoach:
             "Goal: {goal}\nTime: {time_available}\nReturn a 3-step plan."
         )
 
-        # Prompts
+        
         system_template = SystemMessagePromptTemplate.from_template(self.system_prompt)
         human_template = HumanMessagePromptTemplate.from_template(self.user_prompt)
         self.stream_prompt = ChatPromptTemplate.from_messages([system_template, human_template])
         self.plain_prompt = ChatPromptTemplate.from_messages([system_template, human_template])
 
-        # Both LLMs use the same params/model
+       
         self.llm_streaming = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, streaming=True)
         self.llm_plain = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, streaming=False)
 
-        # Chains
+        
         self.stream_chain = LLMChain(llm=self.llm_streaming, prompt=self.stream_prompt)
         self.plain_chain = LLMChain(llm=self.llm_plain, prompt=self.plain_prompt)
 
@@ -51,10 +51,10 @@ class MicroCoach:
         user_input = {"goal": goal, "time_available": time_available}
         if stream:
             printer = PrintTokens()
-            # Use LangChain's with_config to attach callback
+            
             self.stream_chain.with_config({"callbacks": [printer]}).invoke(user_input)
-            print()  # for neatness
-            return ""  # streamed output already printed, return empty string or status
+            print()  
+            return ""  
         else:
             result = self.plain_chain.invoke(user_input)
             return result

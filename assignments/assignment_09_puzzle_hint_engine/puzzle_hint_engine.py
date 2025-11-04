@@ -37,7 +37,7 @@ class PuzzleHintEngine:
         temperature = temp_map.get(difficulty, 0.7)
         llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=temperature)
 
-        # Create the runnable chain as prompt | llm
+      
         chain = self.prompt | llm
 
         output_message = chain.invoke({
@@ -48,7 +48,7 @@ class PuzzleHintEngine:
 
         raw_text = output_message.content
 
-        # Remove markdown `````` if present to get clean JSON
+        
         clean_text = re.sub(r"``````", "", raw_text, flags=re.IGNORECASE).strip()
 
         try:

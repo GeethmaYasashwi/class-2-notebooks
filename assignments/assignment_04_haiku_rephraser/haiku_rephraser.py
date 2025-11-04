@@ -49,7 +49,7 @@ class HaikuRephraser:
     def rephrase(self, text: str, theme: str) -> str:
         """TODO: Stream a first pass, then run a clean-up pass and return final text."""
         draft = self.stream_chain.invoke({"text": text, "theme": theme})
-        print()  # newline after streaming
+        print()  
         final = self.clean_chain.invoke({"draft": draft})
         return final
 

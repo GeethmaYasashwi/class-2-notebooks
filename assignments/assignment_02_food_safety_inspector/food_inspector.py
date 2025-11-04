@@ -1,11 +1,3 @@
-"""
-Assignment 2: AI Food Safety Inspector
-Zero-Shot Prompting with Structured Outputs
-
-Your mission: Analyze restaurant reviews and complaints to detect health violations
-using only clear instructions — no training examples needed!
-"""
-
 import os
 import json
 from typing import Dict, List, Optional, Tuple
@@ -13,8 +5,11 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from dotenv import load_dotenv
+import re
 
+# Load environment variables from .env
+load_dotenv()
 
 class ViolationCategory(Enum):
     TEMPERATURE_CONTROL = "Food Temperature Control"
@@ -24,13 +19,11 @@ class ViolationCategory(Enum):
     FACILITY_MAINTENANCE = "Facility Maintenance"
     UNKNOWN = "Unknown"
 
-
 class SeverityLevel(Enum):
     CRITICAL = "Critical"
     HIGH = "High"
     MEDIUM = "Medium"
     LOW = "Low"
-
 
 class InspectionPriority(Enum):
     URGENT = "URGENT"
@@ -38,22 +31,16 @@ class InspectionPriority(Enum):
     ROUTINE = "ROUTINE"
     LOW = "LOW"
 
-
 @dataclass
 class Violation:
-    """Structured violation data"""
-
     category: str
     description: str
     severity: str
     evidence: str
     confidence: float
 
-
 @dataclass
 class InspectionReport:
-    """Complete inspection analysis"""
-
     restaurant_name: str
     overall_risk_score: int
     violations: List[Violation]
@@ -61,175 +48,170 @@ class InspectionReport:
     recommended_actions: List[str]
     follow_up_required: bool
 
-
 class FoodSafetyInspector:
     """
     AI-powered food safety analyzer using zero-shot structured prompting.
     """
 
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.1):
-        """Initialize with LLM for consistent violation detection."""
-        # TODO: Initialize an LLM for consistent JSON-style outputs
-        # self.llm = ChatOpenAI(model=model_name, temperature=temperature)
-        self.llm = None
+    def __init__(self, model_name: str = "gpt-4o", temperature: float = 0.1):
+        self.llm = ChatOpenAI(model=model_name, temperature=temperature)
         self.analysis_chain = None
         self.risk_chain = None
         self._setup_chains()
 
     def _setup_chains(self):
-        """
-        TODO #1: Create zero-shot prompts for violation detection and risk assessment.
-
-        Create TWO chains:
-        1. analysis_chain: Detects violations and extracts evidence
-        2. risk_chain: Calculates risk scores based on violations
-
-        Requirements:
-        - Must output valid JSON
-        - Include all violation categories
-        - Extract specific evidence quotes
-        - Generate confidence scores
-        """
-
-        # TODO: Create violation detection prompt (as a raw template string)
         analysis_template_str = (
-            "You are a food safety inspector AI. Analyze the following text for health code violations.\n\n"
-            "[Add instructions for categories, evidence extraction, JSON schema, ambiguity handling]\n\n"
-            "Text to analyze: {review_text}\n\nOutput JSON:"
+        "You are a food safety inspector AI. Analyze the following text for health code violations.\n"
+        "Your ONLY output should be a valid, minified JSON array (no comments, no explanations, no newlines):\n"
+        '[{{"category": <string>, "description": <string>, "severity": <Critical|High|Medium|Low>, "evidence": <string>, "confidence": <float>}}]\n'
+        "Categories: Temperature Control, Personal Hygiene, Pest Control, Cross Contamination, Facility Maintenance, Unknown.\n"
+        "Quote evidence directly from the text. If ambiguity exists, assign lower confidence. If no violation detected, output [].\n"
+        "Text: {review_text}\n"
+        "Output:"
         )
-
-        # TODO: Create risk assessment prompt (as a raw template string)
+        
         risk_template_str = (
-            "Based on these violations, calculate an overall risk score (0-100).\n\n"
-            "[Add scoring criteria]\n\nViolations: {violations}\n\nRisk Assessment:"
+        "Given these health code violations (as JSON), calculate an overall risk score from 0 to 100.\n"
+        "Weights: Critical=40, High=30, Medium=20, Low=10. Add weights for each violation, clamp to 100 max.\n"
+        "Assign inspection_priority: URGENT (>70), HIGH (51-70), ROUTINE (31-50), LOW (<=30).\n"
+        "Output ONLY valid minified JSON:\n"
+        '{{"risk_score": <int>, "inspection_priority": <string>}}\n'
+        "Violations: {violations}\n"
+        "Output:"
         )
 
-        # TODO: Build PromptTemplate objects from the strings above
-        # analysis_template = PromptTemplate.from_template(analysis_template_str)
-        # risk_template = PromptTemplate.from_template(risk_template_str)
-        # TODO: Set up the chains
-        # self.analysis_chain = analysis_template | self.llm
-        # self.risk_chain = risk_template | self.llm
-        self.analysis_chain = None
-        self.risk_chain = None
+
+        analysis_template = PromptTemplate.from_template(analysis_template_str)
+        risk_template = PromptTemplate.from_template(risk_template_str)
+        self.analysis_chain = analysis_template | self.llm
+        self.risk_chain = risk_template | self.llm
 
     def detect_violations(self, text: str) -> List[Violation]:
         """
-        TODO #2: Detect health violations from text input.
-
-        Args:
-            text: Review, complaint, or social media post
-
-        Returns:
-            List of Violation objects with evidence
+        Detect health violations from text input.
+        Returns: List of Violation objects with evidence
         """
-
-        # TODO: Use analysis_chain to detect violations
-        # try:
-        #     raw_response = self.analysis_chain.invoke({"review_text": text})
-        #     data = json.loads(raw_response)
-        #     violations: List[Violation] = [...]
-        #     return violations
-        # except Exception as e:
-        #     print(f"Error detecting violations: {e}")
-        #     return []
-        raise NotImplementedError(
-            "Wire analysis chain, parse JSON, and return violations."
-        )
+        try:
+            raw_response = self.analysis_chain.invoke({"review_text": text})
+            # Extract the text from the AIMessage object
+            if hasattr(raw_response, "content"):
+                response_content = raw_response.content
+            else:
+                response_content = str(raw_response)
+            print("LLM Response Content:", response_content)
+            if not response_content.strip():
+                print("Empty response from LLM for text:", text)
+                return []
+            try:
+                # Try direct JSON parse
+                data = json.loads(response_content)
+            except Exception:
+                # Try to extract JSON array from a messy output
+                matches = re.findall(r'\[.*?\]', response_content, flags=re.DOTALL)
+                if matches:
+                    data = json.loads(matches[0])
+                else:
+                    print("Error parsing LLM response, could not extract JSON:", response_content)
+                    return []
+            violations = []
+            for v in data:
+                violations.append(
+                    Violation(
+                        category=v.get("category", "Unknown"),
+                        description=v.get("description", ""),
+                        severity=v.get("severity", "Low"),
+                        evidence=v.get("evidence", ""),
+                        confidence=v.get("confidence", 0.0),
+                    )
+                )
+            return violations
+        except Exception as e:
+            print(f"Error detecting violations: {e}")
+            return []
 
     def calculate_risk_score(self, violations: List[Violation]) -> Tuple[int, str]:
-        """
-        TODO #3: Calculate overall risk score and determine inspection priority.
+        severity_weights = {
+            "Critical": 40,
+            "High": 30,
+            "Medium": 20,
+            "Low": 10,
+        }
+        risk_score = sum(severity_weights.get(v.severity, 10) for v in violations)
+        risk_score = min(max(risk_score, 0), 100)
+        if risk_score > 70:
+            priority = InspectionPriority.URGENT.value
+        elif risk_score > 50:
+            priority = InspectionPriority.HIGH.value
+        elif risk_score > 30:
+            priority = InspectionPriority.ROUTINE.value
+        else:
+            priority = InspectionPriority.LOW.value
+        return risk_score, priority
 
-        Args:
-            violations: List of detected violations
+    def analyze_review(self, text: str, restaurant_name: str = "Unknown") -> InspectionReport:
+        violations = self.detect_violations(text)
+        risk_score, priority = self.calculate_risk_score(violations)
+        recommendations = []
+        follow_up = False
 
-        Returns:
-            Tuple of (risk_score, inspection_priority)
-        """
+        if risk_score > 70:
+            recommendations.append("Immediate inspection and corrective action required.")
+            follow_up = True
+        elif risk_score > 50:
+            recommendations.append("Schedule inspection soon and monitor.")
+            follow_up = True
+        elif risk_score > 30:
+            recommendations.append("Review practices and improve hygiene.")
+        else:
+            recommendations.append("Routine check recommended.")
 
-        # TODO: Implement risk scoring logic
-        # Consider: severity levels, number of violations, categories affected
-
-        # risk_score = ...
-        # priority = ...
-        # return risk_score, priority
-        raise NotImplementedError(
-            "Implement scoring to produce risk score and priority."
-        )
-
-    def analyze_review(
-        self, text: str, restaurant_name: str = "Unknown"
-    ) -> InspectionReport:
-        """
-        TODO #4: Complete analysis pipeline for a single review.
-
-        Args:
-            text: Review text to analyze
-            restaurant_name: Name of the restaurant
-
-        Returns:
-            Complete InspectionReport with all findings
-        """
-
-        # TODO: Implement full analysis pipeline
-        # 1. Detect violations
-        # 2. Calculate risk score
-        # 3. Generate recommendations
-        # 4. Create InspectionReport
-
-        # violations = self.detect_violations(text)
-        # risk_score, priority = self.calculate_risk_score(violations)
-        # recommendations = [...]
-        # return InspectionReport(...)
-        raise NotImplementedError(
-            "Implement end-to-end review analysis and return report."
+        return InspectionReport(
+            restaurant_name=restaurant_name,
+            overall_risk_score=risk_score,
+            violations=violations,
+            inspection_priority=priority,
+            recommended_actions=recommendations,
+            follow_up_required=follow_up,
         )
 
     def batch_analyze(self, reviews: List[Dict[str, str]]) -> InspectionReport:
-        """
-        TODO #5: Analyze multiple reviews for the same restaurant.
+        all_violations = []
+        for review in reviews:
+            detected = self.detect_violations(review["text"])
+            all_violations.extend(detected)
+        # Remove duplicates based on category and description, favor higher confidence
+        unique = {}
+        for v in all_violations:
+            key = (v.category, v.description)
+            if key not in unique or unique[key].confidence < v.confidence:
+                unique[key] = v
+        filtered_violations = list(unique.values())
+        risk_score, priority = self.calculate_risk_score(filtered_violations)
 
-        Args:
-            reviews: List of dicts with 'text' and 'source' keys
-
-        Returns:
-            Aggregated InspectionReport
-        """
-
-        # TODO: Implement aggregation logic
-        # - Combine violations from multiple sources
-        # - Weight by source reliability
-        # - Remove duplicates
-        # - Calculate aggregate risk score
-
-        # aggregated_report = ...
-        # return aggregated_report
-        raise NotImplementedError(
-            "Aggregate multiple reviews and compute overall report."
+        recommendations = ["Aggregate findings from multiple review sources and prioritize accordingly."]
+        follow_up = risk_score > 50
+        return InspectionReport(
+            restaurant_name="Aggregated",
+            overall_risk_score=risk_score,
+            violations=filtered_violations,
+            inspection_priority=priority,
+            recommended_actions=recommendations,
+            follow_up_required=follow_up,
         )
 
     def filter_false_positives(self, violations: List[Violation]) -> List[Violation]:
-        """
-        TODO #6 (Bonus): Filter out likely false positives.
-
-        Consider:
-        - Sarcasm indicators
-        - Exaggeration patterns
-        - Confidence thresholds
-        """
-
-        # TODO: Implement false positive filtering
-        # return filtered
-        raise NotImplementedError("Design and apply false-positive filters.")
-
+        filtered = []
+        for v in violations:
+            if v.confidence < 0.5:
+                continue
+            if any(word in v.evidence.lower() for word in ["just kidding", "sarcasm", "not true"]):
+                continue
+            filtered.append(v)
+        return filtered
 
 def test_inspector():
-    """Test the food safety inspector with various scenarios."""
-
     inspector = FoodSafetyInspector()
 
-    # Test cases with varying violation types
     test_reviews = [
         {
             "restaurant": "Bob's Burgers",
@@ -259,49 +241,35 @@ def test_inspector():
     for review_data in test_reviews:
         print(f"\n🏪 Restaurant: {review_data['restaurant']}")
         print(f"📝 Review: \"{review_data['text'][:100]}...\"")
-
-        # Analyze the review
-        report = inspector.analyze_review(
-            review_data["text"], review_data["restaurant"]
-        )
-
-        # Display results
+        report = inspector.analyze_review(review_data["text"], review_data["restaurant"])
         print(f"\n📊 Inspection Report:")
         print(f"  Risk Score: {report.overall_risk_score}/100")
         print(f"  Priority: {report.inspection_priority}")
         print(f"  Violations Found: {len(report.violations)}")
-
         if report.violations:
             print("\n  Detected Violations:")
             for v in report.violations:
                 print(f"    • [{v.severity}] {v.category}: {v.description}")
                 print(f'      Evidence: "{v.evidence[:50]}..."')
                 print(f"      Confidence: {v.confidence:.0%}")
-
         if report.recommended_actions:
             print("\n  Recommended Actions:")
             for action in report.recommended_actions:
                 print(f"    ✓ {action}")
-
         print(f"\n  Follow-up Required: {'Yes' if report.follow_up_required else 'No'}")
         print("-" * 70)
 
     # Test batch analysis
     print("\n🔬 BATCH ANALYSIS TEST:")
     print("=" * 70)
-
-    # Multiple reviews for same restaurant
     batch_reviews = [
         {"text": "Saw bugs in the kitchen!", "source": "Yelp"},
         {"text": "Food was cold and undercooked", "source": "Google"},
         {"text": "Staff not wearing hairnets", "source": "Twitter"},
     ]
-
-    # TODO: Uncomment when batch_analyze is implemented
-    # batch_report = inspector.batch_analyze(batch_reviews)
-    # print(f"Aggregate Risk Score: {batch_report.overall_risk_score}/100")
-    # print(f"Total Violations: {len(batch_report.violations)}")
-
+    batch_report = inspector.batch_analyze(batch_reviews)
+    print(f"Aggregate Risk Score: {batch_report.overall_risk_score}/100")
+    print(f"Total Violations: {len(batch_report.violations)}")
 
 if __name__ == "__main__":
     if not os.getenv("OPENAI_API_KEY"):

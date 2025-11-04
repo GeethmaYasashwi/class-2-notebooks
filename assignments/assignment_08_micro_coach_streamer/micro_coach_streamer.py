@@ -7,49 +7,57 @@ encouraging guidance token-by-token via a callback.
 
 import os
 from typing import Any
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain.chains import LLMChain
 
 
-class PrintTokens:
-    """Minimal callback-like interface for printing tokens.
+load_dotenv()
+from langchain_core.callbacks import BaseCallbackHandler
 
-    Implement compatibility with LangChain callback protocol if desired.
-    """
-
+class PrintTokens(BaseCallbackHandler):
+    """Fully compatible callback for LangChain streaming."""
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        print(token, end="")
+        print(token, end="", flush=True)
 
 
 class MicroCoach:
     def __init__(self):
-        """Store prompt strings and prepare placeholders.
-
-        Provide:
-        - `system_prompt` motivating but practical tone
-        - `user_prompt` with variables {goal}, {time_available}
-        - `self.llm_streaming` and `self.llm_plain` placeholders (None), with TODOs
-        - `self.stream_prompt` and `self.plain_prompt` placeholders (None), with TODOs
-        """
+        """Store prompt strings and prepare placeholders."""
         self.system_prompt = (
             "You are a supportive micro-coach. Keep plans realistic and brief."
         )
-        self.user_prompt = "Goal: {goal}\nTime: {time_available}\nReturn a 3-step plan."
+        self.user_prompt = (
+            "Goal: {goal}\nTime: {time_available}\nReturn a 3-step plan."
+        )
 
-        # TODO: Build prompts and LLMs (streaming and non-streaming)
-        self.llm_streaming = None
-        self.llm_plain = None
-        self.stream_prompt = None
-        self.plain_prompt = None
-        self.stream_chain = None
-        self.plain_chain = None
+        # Prompts
+        system_template = SystemMessagePromptTemplate.from_template(self.system_prompt)
+        human_template = HumanMessagePromptTemplate.from_template(self.user_prompt)
+        self.stream_prompt = ChatPromptTemplate.from_messages([system_template, human_template])
+        self.plain_prompt = ChatPromptTemplate.from_messages([system_template, human_template])
+
+        # Both LLMs use the same params/model
+        self.llm_streaming = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, streaming=True)
+        self.llm_plain = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, streaming=False)
+
+        # Chains
+        self.stream_chain = LLMChain(llm=self.llm_streaming, prompt=self.stream_prompt)
+        self.plain_chain = LLMChain(llm=self.llm_plain, prompt=self.plain_prompt)
 
     def coach(self, goal: str, time_available: str, stream: bool = False) -> str:
-        """Return guidance using streaming or non-streaming path.
-
-        Implement:
-        - If `stream=True`, attach a token printer callback and stream output.
-        - Else, return a compact non-streamed plan string.
-        """
-        raise NotImplementedError("Implement streaming vs non-streaming coaching.")
+        """Return guidance using streaming or non-streaming path."""
+        user_input = {"goal": goal, "time_available": time_available}
+        if stream:
+            printer = PrintTokens()
+            # Use LangChain's with_config to attach callback
+            self.stream_chain.with_config({"callbacks": [printer]}).invoke(user_input)
+            print()  # for neatness
+            return ""  # streamed output already printed, return empty string or status
+        else:
+            result = self.plain_chain.invoke(user_input)
+            return result
 
 
 def _demo():

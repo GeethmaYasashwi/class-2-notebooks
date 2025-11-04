@@ -79,6 +79,7 @@ class EmergencyDispatcher:
         """
         # TODO: invoke the chain with {"transcript": transcript}
         # and parse the result into DispatchResult
+        
         output = self.chain.invoke({"transcript": transcript})
         parts = [p.strip() for p in output.split("|")]
         if len(parts) != 3:

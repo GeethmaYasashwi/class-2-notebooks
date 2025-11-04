@@ -1,32 +1,28 @@
-"""
-Assignment 4: Haiku Rephraser — Streaming
-
-Focus: Streaming tokens with a callback, then a tidy non-streaming pass.
-"""
-
 import os
+import re
 from typing import Any, Optional
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
+from dotenv import load_dotenv
 
+# Load environment variables from .env
+load_dotenv()
 
 class PrintStreamHandler(BaseCallbackHandler):
     """TODO: Print tokens to stdout as they arrive."""
 
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        print(token, end="")
+        print(token, end="", flush=True)
 
 
 class HaikuRephraser:
     def __init__(self):
         # TODO: Create a streaming LLM with PrintStreamHandler
-        # self.stream_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True, callbacks=[PrintStreamHandler()])
-        self.stream_llm = None
+        self.stream_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True, callbacks=[PrintStreamHandler()])
         # TODO: Create a non-streaming LLM for clean-up
-        # self.clean_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.4)
-        self.clean_llm = None
+        self.clean_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.4)
 
         # Prompts
         stream_system = "You transform text into a 3-line haiku about a theme."
@@ -37,31 +33,31 @@ class HaikuRephraser:
         clean_user = "Polish this haiku while keeping its meaning:\n{draft}"
 
         # TODO: Build ChatPromptTemplates from the above strings
-        # self.stream_prompt = ChatPromptTemplate.from_messages([...])
-        # self.clean_prompt = ChatPromptTemplate.from_messages([...])
-        self.stream_prompt = None
-        self.clean_prompt = None
+        self.stream_prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(stream_system),
+            HumanMessagePromptTemplate.from_template(stream_user),
+        ])
+        self.clean_prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(clean_system),
+            HumanMessagePromptTemplate.from_template(clean_user),
+        ])
 
         # TODO: Build chains with StrOutputParser
-        # self.stream_chain = self.stream_prompt | self.stream_llm | StrOutputParser()
-        # self.clean_chain = self.clean_prompt | self.clean_llm | StrOutputParser()
-        self.stream_chain = None
-        self.clean_chain = None
+        self.stream_chain = self.stream_prompt | self.stream_llm | StrOutputParser()
+        self.clean_chain = self.clean_prompt | self.clean_llm | StrOutputParser()
 
     def rephrase(self, text: str, theme: str) -> str:
         """TODO: Stream a first pass, then run a clean-up pass and return final text."""
-        # _ = self.stream_chain.invoke({"text": text, "theme": theme})
-        # print()  # newline after streaming
-        # final = self.clean_chain.invoke({"draft": _})
-        # return final
-        raise NotImplementedError(
-            "Build streaming + cleanup chains and return final haiku."
-        )
+        draft = self.stream_chain.invoke({"text": text, "theme": theme})
+        print()  # newline after streaming
+        final = self.clean_chain.invoke({"draft": draft})
+        return final
 
 
 def _demo():
     if not os.getenv("OPENAI_API_KEY"):
         print("⚠️ Set OPENAI_API_KEY before running.")
+        return
     r = HaikuRephraser()
     print("\n🌸 Haiku Rephraser — demo\n" + "-" * 40)
     result = r.rephrase("A quiet morning bus with foggy windows.", theme="dawn")
